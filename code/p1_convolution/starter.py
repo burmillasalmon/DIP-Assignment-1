@@ -7,6 +7,7 @@ import numpy as np
 import time
 from scipy.signal import correlate2d
 import tracemalloc
+import matplotlib.pyplot as plt
 def kernel_bank(k=15):
     """Provided. Do not modify -- your rank table must match these kernels."""
     ax = np.arange(k) - (k - 1) / 2
@@ -25,9 +26,37 @@ def kernel_bank(k=15):
             "motion_45deg": np.eye(k) / k, "disk": disk, "random": rand}
 
 
-def numeric_rank(K, tol=1e-10):
+def numeric_rank(K, tol=1e-14):
     """TODO 1.2: numerical rank from the singular values."""
-    raise NotImplementedError
+    S = np.linalg.svd(K, compute_uv=False)
+    count = 0
+    #print(max(S))
+    for i in range(len(S)):
+        if(S[i]>tol):
+            count+=1
+    return count;
+
+def kernel_analysis():
+    k = 15
+    kernels = kernel_bank(k)
+    for idx, (name,K) in enumerate(kernels.items()):
+        rank = numeric_rank(K)
+        print("name:", name, "rank:",rank)
+
+        # plot
+        S = np.linalg.svd(K, compute_uv = False)
+        S_norm = S/S[0]
+
+        plt.subplot(3,3, idx+1)
+        plt.stem(S_norm, markerfmt='o', basefmt=" ")
+        plt.ylim(1e-17, 1.1)
+        plt.yscale('log')
+        plt.title(name)
+        plt.xlabel("Singualr Value Index")
+        plt.ylabel("Normalized log(SV)")
+    plt.tight_layout()
+    plt.savefig("kernel_single_value_spectra.png", dpi=300)
+    plt.show()
 
 def conv2d_loops(img, K):
     x,y = img.shape
@@ -37,7 +66,6 @@ def conv2d_loops(img, K):
     final_image = np.zeros((x, y))
     for i in range(x):
         for j in range(y):
-            sumn = 0.0
             for a in range(kx):
                 for b in range(ky):
                     final_image[i,j] += padded_img[i + a, j + b] * K[kx - 1 - a, ky - 1 - b]
@@ -106,37 +134,208 @@ def conv2d_fft(img, K):
     index = (kx-1)//2
     index2 = (ky-1)//2
     ans = np.fft.ifft2(freq_img* frequency_k)[index:index+x, index2:index2+y]
-    return ans
+    return ans.real
     
+def conv1d(img, kernel1d, axis):
+    k = len(kernel1d)
+    pad = k//2
+    x,y = img.shape
+    if(axis==1):
+        padded = np.pad(img, ((0,0),(pad,pad)), mode='constant')
+        answer = np.zeros((x,y))
+        for i in range(k):
+            answer = answer + padded[:, i:i+y] * kernel1d[k-1-i]
+    else:
+        padded = np.pad(img, ((pad,pad), (0,0)), mode='constant')
+        answer = np.zeros((x,y))
+        for i in range(k):
+            answer = answer + padded[i: i+x, :] * kernel1d[k-1-i]
+    return answer
 
 
-def conv2d_separable(img, K, tol=1e-10):
-    """TODO 1.3: rank-1 only. Raise if K is not rank-1."""
-    raise NotImplementedError
-
+def conv2d_separable(img, K):
+    U, S, Vh = np.linalg.svd(K)
+    u1 = U[:, 0]
+    v1 = Vh[0,:]
+    temp = conv1d(img, v1, axis=1)
+    answer = conv1d(temp, u1, axis=0) * S[0]
+    return answer;
 
 def conv2d_lowrank(img, K, r):
-    """TODO 1.3: sum of r separable passes from the truncated SVD."""
-    raise NotImplementedError
+    U, S, Vh = np.linalg.svd(K)
+    r = min(r, len(S))
+    X, Y = img.shape
+    answer = np.zeros((X,Y))
+    for i in range(r):
+        ui = U[:, i]
+        vi = Vh[i,:]
+        temp = conv1d(img, vi, axis = 1)
+        component = conv1d(temp, ui,axis=0)
 
+        answer += S[i] * component
+    return answer
 
 def psnr(a, b, peak=255.0):
     mse = np.mean((a.astype(np.float64) - b.astype(np.float64))**2)
     return float("inf") if mse == 0 else 10 * np.log10(peak * peak / mse)
 
+def psnr_vs_r():
+    k = 21
+    kernels = ['disk','log','motion_45deg','random']
+    root = Path(__file__).resolve().parents[2]
+    img = np.asarray(Image.open(root / "images/p1/base_2048.png")).astype(float)[:512, :512]    
+    
+    K_rand = kernel_bank(k)['random']
+    U,S,Vh = np.linalg.svd(K_rand)
+    print("Random kernel singular values", S[:5],"...",S[-5:])
+    print("Sum of sv:",np.sum(S))
+    ref = conv2d_im2col(img,K_rand)
+    full_rank_approx = conv2d_lowrank(img,K_rand,k)
+    print("PSNR at r = k:",psnr(ref, full_rank_approx))
+    print("Max diff at r = k:", np.abs(ref - full_rank_approx).max())
+
+
+
+    plt.figure(figsize=(10,6))
+
+    for name in kernels:
+        K = kernel_bank(k)[name]
+        ref = conv2d_im2col(img,K)
+
+        psnr_vals = []
+        for r in range(1,k+1):
+            approx = conv2d_lowrank(img,K,r)
+            psnr_vals.append(psnr(ref,approx))
+        plt.plot(range(1,k+1), psnr_vals, marker='o', label=name)
+    plt.xlabel("Rank r")
+    plt.ylabel("PSNR (db)")
+    plt.legend()
+    plt.ylim(0,80)
+    plt.savefig("psnr_vs_rank.png", dpi=300)
+    plt.close()
+
+
 def aymmetric_test(img):
     K = kernel_bank(7)["sobel3"]
-    # scipy correlation to check the answer
     corr = correlate2d(img, K, mode="same", boundary="fill")
-
+    conv = convolve2d(img, K, mode="same", boundary="fill")
     conv_loops = conv2d_loops(img, K)
+    print("Difference from true convolution",np.abs(conv_loops-conv).max())
     print("Difference loops= ",np.abs(conv_loops-corr).max())
     conv_taps = conv2d_taps(img,K)
+    print("Difference from true convolution",np.abs(conv_taps-conv).max())
     print("Difference taps = ", np.abs(conv_taps-corr).max())
     conv_fft = conv2d_fft(img,K)
+    print("Difference from true convolution",np.abs(conv_fft-conv).max())
     print("Difference fft = ", np.abs(conv_fft - corr).max())
     conv_im2col = conv2d_im2col(img,K)
+    print("Difference from true convolution",np.abs(conv_im2col-conv).max())
     print("Difference im2col = ", np.abs(corr - conv_im2col).max())
+
+
+def timetest(fn,img,K, times=3):
+    times_res = []
+    for i in range(times):
+        start = time.time()
+        fn(img,K)
+        end = time.time()
+        times_res.append(end-start)
+    return np.median(times_res)
+
+def runtime_k():
+    root = Path(__file__).resolve().parents[2]
+    img = np.asarray(Image.open(root / "images/p1/base_2048.png")).astype(float)[:512, :512]
+    ks = np.array([3,7,11,15,21,31])
+    times = []
+    for k in ks:
+        K = kernel_bank(k)["gaussian"]
+        t = timetest(conv2d_taps, img, K)
+        times.append(t)
+
+    times = np.array(times)
+    slope, intercept = np.polyfit(np.log(ks),np.log(times), 1)
+    print("Slope:",slope)
+
+    plt.figure()
+    plt.loglog(ks, times, "o-", label="Tap loop")
+
+    fitted = np.exp(intercept) * ks** slope
+    plt.loglog(ks, fitted, "--", label="fitted slope")
+
+    plt.xlabel("Kernel size")
+    plt.ylabel("Time taken")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("runtime_vs_k.png", dpi=300)
+
+def runtime_n():
+    root = Path(__file__).resolve().parents[2]
+    img = np.asarray(Image.open(root / "images/p1/base_2048.png")).astype(float)
+    ns = np.array([128,256,512,1024,2048])
+    times = []
+    K = kernel_bank(15)["gaussian"]
+    for n_curr in ns:
+        img_curr = img[:n_curr, :n_curr]
+        t = timetest(conv2d_taps, img_curr, K)
+        times.append(t)
+    times = np.array(times)
+    slope, intercept = np.polyfit(np.log(ns),np.log(times), 1)
+    print("Slope:",slope)
+
+    plt.figure()
+    plt.loglog(ns, times, "o-", label="Tap loop")
+
+    fitted = np.exp(intercept) * ns** slope
+    plt.loglog(ns, fitted, "--", label="fitted slope")
+
+    plt.xlabel("Image size")
+    plt.ylabel("Time taken")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig("runtime_vs_n.png", dpi=300)
+
+def im2col_memory_vs_N():
+    root = Path(__file__).resolve().parents[2]
+    img_full = np.asarray(Image.open(root / "images/p1/base_2048.png")).astype(float)
+    ns = np.array([128,256,512,1024,2048])
+    K = kernel_bank(15)["gaussian"]
+    for N in ns:
+        img = img_full[:N, :N]
+        tracemalloc.start()
+        try:
+            conv2d_im2col(img, K)
+            current, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        print(f"N=",N, "peak=",peak)
+
+def compare_taps_im2col():
+    root = Path(__file__).resolve().parents[2]
+    img_full = np.asarray(Image.open(root / "images/p1/base_2048.png")).astype(float)[:512,:512]
+    ks = [3, 7, 11, 15, 21, 31]
+    for k in ks:
+        K = kernel_bank(k)["gaussian"]
+        tap_time = timetest(conv2d_taps, img_full, K)
+        im2col_time = timetest(conv2d_im2col, img_full, K)
+        speedup = tap_time / im2col_time
+        print("k=",k, "tap :", round(tap_time,4), "col :", round(im2col_time,4), "speedup:", round(speedup,4))
+
+
+def separable_speedup():
+    root = Path(__file__).resolve().parents[2]
+    img_full = np.asarray(Image.open(root / "images/p1/base_2048.png")).astype(float)
+    K = kernel_bank(15)["gaussian"]
+    for N in [512, 2048]:
+        img = img_full[:N, :N]
+        tap_time = timetest( conv2d_taps, img, K)
+        sep_time = timetest(conv2d_separable, img, K)
+        speedup = tap_time / sep_time
+        print(
+            f"N={N}: "
+            f"tap={tap_time:.4f}s "
+            f"separable={sep_time:.4f}s "
+            f"speedup={speedup:.4f}x"
+        )
 
 if __name__ == "__main__":
     from pathlib import Path
@@ -155,3 +354,11 @@ if __name__ == "__main__":
     #conv2d_loops_timetest()
     #aymmetric_test(img)
     #conv2d_im2col_memtest(img,K)
+    #kernel_analysis()
+    #psnr_vs_r()
+    #runtime_k()
+    #runtime_n()
+    im2col_memory_vs_N()
+    #compare_taps_im2col()
+    #separable_speedup()
+
