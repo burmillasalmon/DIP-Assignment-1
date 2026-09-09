@@ -1,0 +1,5 @@
+source: /home/bsal/Documents/IIIT/Monsoon2026/DIP/DIP_Assignment_1/code/assets/greenscreenvideo.mp4
+window: frames 123..170
+fractional alpha: nan%
+backing chroma std: nan
+Delete this file to let build_assets.py regenerate synthetic frames again.
