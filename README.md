@@ -36,21 +36,9 @@ explain your own implementation and measurements.
 | P4.2(c) | `images/p4/colour_source.png` |
 | P4.3 | `images/p4/local_regions.png` |
 | P4.4 | `images/p4/exposure/ev0.png` through `ev4.png` |
-
+| p5 | `assets/greenscreenvideo.mp4` |
+| p5 | `images/p5/background_plate.jpeg` |
 P2's clean cover for `decode_me.png` is `cover_textured.png`.
-
-P5 images are deliberately not supplied. Source your own qualifying green-screen
-footage and background plate as required by the handout. The optional helper
-`code/assets/ingest_greenscreen.py` can extract and inspect 48 frames. It must be
-run from the bundle root:
-
-```text
-python code/assets/ingest_greenscreen.py path/to/clip.mp4 --frames 48 --report
-```
-
-This helper uses `code/assets/check_asset.py` and writes selected frames under
-`images/p5/`. You remain responsible for visually checking that your footage
-contains real hair, motion blur, or translucent detail.
 
 ## Files intentionally not supplied
 

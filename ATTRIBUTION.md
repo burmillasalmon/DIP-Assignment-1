@@ -44,5 +44,10 @@ The following were distributed through
 - `images/p4/colour_source.png` and the derived exposure series: Astronaut,
   NASA, public domain.
 
+
+- `images/p5/background_plat.jpeg`: Image by <a href="https://pixabay.com/users/steppinstars-3941/?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=63564">Steve</a> from <a href="https://pixabay.com//?utm_source=link-attribution&utm_medium=referral&utm_campaign=image&utm_content=63564">Pixabay</a>
+
+- `code/asset/greenscreenvideo.mp4`: Video by Mixkit - free stock video https://mixkit.co/free-stock-video/a-woman-dancing-in-front-of-a-green-screen-23572/
+
 Students must separately credit any footage, background plate, photograph, or
 other material they add themselves.
